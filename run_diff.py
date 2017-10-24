@@ -256,9 +256,13 @@ if __name__ == '__main__':
         if previous_version is None or current_version is None:
             continue
 
+        logging.info('new version found')
+
         if previous_version.title != current_version.title:
+            logging.info('Title change...')
             twitter.tweet('Cambio en el título', previous_version.article, previous_version.title, current_version.title)
         if previous_version.intro != current_version.intro:
+            logging.info('Intro change...')
             twitter.tweet('Cambio en la bajada', previous_version.article, previous_version.intro, current_version.intro)
 
 
