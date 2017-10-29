@@ -15,6 +15,7 @@ from database import Session, Article, Version
 from PIL import Image
 from simplediff import html_diff
 from selenium import webdriver
+from html.parser import HTMLParser
 
 logging.basicConfig(filename='log.txt',
                     format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO)
@@ -22,42 +23,47 @@ logging.basicConfig(filename='log.txt',
 PHANTOMJS_PATH = os.environ['PHANTOMJS_PATH']
 
 
-def get_news_feed_links():
+def rss_from_internet():
+    req = requests.get('http://www.abc.com.py/rss.xml', headers=headers)
+    text = req.text
+    return text
+
+
+def rss_from_file(filename):
+    with open(filename, 'r') as f:
+        return f.read()
+
+
+def valid_rss(supposed_rss):
+    return 'incapsula' not in supposed_rss
+
+
+def process_rss_entries(rss_text):
     import xml.etree.ElementTree as ET
 
+    tree = ET.fromstring(rss_text)
+    parser = HTMLParser()
+
     ret = []
-    req = requests.get('http://www.abc.com.py/rss.xml')
-    #print (req.encoding)
-    text = req.text
-    tree = ET.fromstring(text)
     for item in tree.iter('item'):
-        guid = item.find('guid')
-        link = guid.text
-        if '/730am/' in link or link.endswith('.com.py/'):
+        guid = item.find('guid').text
+
+        if '/730am/' in guid or guid.endswith('.com.py/'):
             continue
 
-        ret.append(link)
+        title = item.find('title').text
+        description = item.find('description').text
+
+        bs = BeautifulSoup(description, 'html.parser')
+
+        clean_description = bs.text
+        clean_description = parser.unescape(clean_description)
+        clean_description = clean_description.strip()
+
+
+        ret.append({ 'title': title, 'intro': clean_description, 'link': guid, 'source': 'abc'})
 
     return ret
-
-
-def get_article_from_link(link):
-    logging.info('Por buscar link: {}'.format(link))
-    try:
-        req = requests.get(link)
-        soup = BeautifulSoup(req.text, 'html.parser')
-
-        title_tag = soup.find_all('h1')[0]
-        intro_tag = soup.find_all('p', class_='summary')[0]
-
-        return (True, {
-            'title': title_tag.text.strip(),
-            'intro': intro_tag.text.strip(),
-            'link': link,
-            'source': 'abc'
-            })
-    except:
-        return False, {}
 
 
 def generate_diff(old, new):
@@ -226,32 +232,21 @@ class Twitter:
         session.commit()
     
 
-
-#def fetch_articles_seen_before_excluding(excluded_list=None):
-#    stamp = datetime.now() - timedelta(minutes=50)
-#    if excluded_list is not None:
-#        ret_list = session \
-#            .query(Article) \
-#            .filter(and_(Article.link.notin_(excluded_list),
-#                        Article.seen <= stamp)).all()
-#    else:
-#        ret_list = session.query(Article).filter(Article.seen <= stamp).all()
-#    
-#    return ret_list
-
-
 if __name__ == '__main__':
-    #twitter = initialize_twitter()
     session = Session()
     twitter = Twitter()
 
-    feed_list = get_news_feed_links()
-    for feed_link in feed_list:
-        found, article_dict = get_article_from_link(feed_link)
-        if not found:
-            logging.error('problem retrieving the article from feed link... ' + feed_link)
-            continue
+    rss = rss_from_internet()
 
+    if not valid_rss(rss):
+        logging.error('Not a valid RSS obtained, exiting....')
+        logging.error(rss)
+        sys.exit(1)
+
+    logging.info('obtained valid RSS')
+
+    entries = process_rss_entries(rss)
+    for article_dict in entries:
         previous_version, current_version = create_article_version_if_needed(article_dict)
         if previous_version is None or current_version is None:
             continue
@@ -264,7 +259,6 @@ if __name__ == '__main__':
         if previous_version.intro != current_version.intro:
             logging.info('Intro change...')
             twitter.tweet('Cambio en la bajada', previous_version.article, previous_version.intro, current_version.intro)
-
 
 
 #### FIXME agregar el filtro de seen <= (ahora - x horas)
