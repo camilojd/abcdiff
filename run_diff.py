@@ -24,7 +24,7 @@ PHANTOMJS_PATH = os.environ['PHANTOMJS_PATH']
 
 
 def rss_from_internet():
-    req = requests.get('http://www.abc.com.py/rss.xml', headers=headers)
+    req = requests.get('http://www.abc.com.py/rss.xml')
     text = req.text
     return text
 
