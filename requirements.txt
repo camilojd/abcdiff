@@ -12,4 +12,4 @@ simplediff==1.0
 six==1.11.0
 SQLAlchemy==1.1.13
 tweepy==3.5.0
-urllib3==1.22
+urllib3==1.24.2
